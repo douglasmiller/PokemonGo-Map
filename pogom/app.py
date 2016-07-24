@@ -1,15 +1,17 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-import calendar
 import logging
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, make_response
 from flask.json import JSONEncoder
 from flask_compress import Compress
 from datetime import datetime
 from s2sphere import *
-from pogom.utils import get_args
+from pogom.utils import get_args, datetime_to_miliseconds
+
+from protobuf_to_dict import dict_to_protobuf
+import pogom.protos.PogomResponse_pb2 as PogomResponse
 
 from . import config
 from .models import Pokemon, Gym, Pokestop, ScannedLocation
@@ -24,6 +26,7 @@ class Pogom(Flask):
         self.json_encoder = CustomJSONEncoder
         self.route("/", methods=['GET'])(self.fullmap)
         self.route("/raw_data", methods=['GET'])(self.raw_data)
+        self.route("/proto_data", methods=['GET'])(self.proto_data)
         self.route("/loc", methods=['GET'])(self.loc)
         self.route("/next_loc", methods=['POST'])(self.next_loc)
         self.route("/mobile", methods=['GET'])(self.list_pokemon)
@@ -42,29 +45,43 @@ class Pogom(Flask):
                                is_fixed=display
                                )
 
-    def raw_data(self):
+    def get_raw_data(self, convert=False):
         d = {}
-        swLat = request.args.get('swLat')
-        swLng = request.args.get('swLng')
-        neLat = request.args.get('neLat')
-        neLng = request.args.get('neLng')
+        bounds = {
+            'swLat': request.args.get('swLat'),
+            'swLng': request.args.get('swLng'),
+            'neLat': request.args.get('neLat'),
+            'neLng': request.args.get('neLng')
+        }
         if request.args.get('pokemon', 'true') == 'true':
             if request.args.get('ids'):
                 ids = [int(x) for x in request.args.get('ids').split(',')]
-                d['pokemons'] = Pokemon.get_active_by_id(ids, swLat, swLng, neLat, neLng)
+                d['pokemons'] = Pokemon.get_active_by_id(ids, bounds, convert)
             else:
-                d['pokemons'] = Pokemon.get_active(swLat, swLng, neLat, neLng)
+                d['pokemons'] = Pokemon.get_active(bounds, convert)
 
         if request.args.get('pokestops', 'false') == 'true':
-            d['pokestops'] = Pokestop.get_stops(swLat, swLng, neLat, neLng)
+            d['pokestops'] = Pokestop.get_stops(bounds, convert)
 
         if request.args.get('gyms', 'true') == 'true':
-            d['gyms'] = Gym.get_gyms(swLat, swLng, neLat, neLng)
+            d['gyms'] = Gym.get_gyms(bounds, convert)
 
         if request.args.get('scanned', 'true') == 'true':
-            d['scanned'] = ScannedLocation.get_recent(swLat, swLng, neLat, neLng)
+            d['scanned'] = ScannedLocation.get_recent(bounds, convert)
 
-        return jsonify(d)
+        return d
+
+
+    def raw_data(self):
+        return jsonify(self.get_raw_data())
+
+    def proto_data(self):
+        proto = dict_to_protobuf(PogomResponse.Response, self.get_raw_data(True))
+
+        res = make_response(proto.SerializeToString())
+        res.headers.set('Content-Type', 'application/octet-stream')
+
+        return res
 
     def loc(self):
         d = {}
@@ -127,13 +144,7 @@ class CustomJSONEncoder(JSONEncoder):
     def default(self, obj):
         try:
             if isinstance(obj, datetime):
-                if obj.utcoffset() is not None:
-                    obj = obj - obj.utcoffset()
-                millis = int(
-                    calendar.timegm(obj.timetuple()) * 1000 +
-                    obj.microsecond / 1000
-                )
-                return millis
+                datetime_to_miliseconds(obj)
             iterable = iter(obj)
         except TypeError:
             pass

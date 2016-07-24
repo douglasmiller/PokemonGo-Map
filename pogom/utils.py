@@ -9,6 +9,7 @@ import uuid
 import os
 import json
 from datetime import datetime, timedelta
+import calendar
 import ConfigParser
 import platform
 import logging
@@ -22,6 +23,15 @@ DEFAULT_THREADS = 1
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(module)11s] [%(levelname)7s] %(message)s')
 log = logging.getLogger(__name__)
+
+def datetime_to_miliseconds(obj):
+    if obj.utcoffset() is not None:
+        obj = obj - obj.utcoffset()
+    millis = int(
+        calendar.timegm(obj.timetuple()) * 1000 +
+        obj.microsecond / 1000
+    )
+    return millis
 
 def parse_unicode(bytestring):
     decoded_string = bytestring.decode(sys.getfilesystemencoding())

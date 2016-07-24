@@ -1,0 +1,45 @@
+
+message Response {
+    repeated Gym gyms = 1;
+    repeated Pokemon pokemons = 2;
+    repeated Pokestop pokestops = 3;
+    repeated ScannedLocation scanned = 4;
+}
+
+message Gym {
+    optional bool enabled = 1;
+    optional int32 guard_pokemon_id = 2;
+    optional string gym_id = 3;
+    optional int64 gym_points = 4;
+    optional int64 last_modified = 5;
+    optional double latitude = 6;
+    optional double longitude = 7;
+    optional int32 team_id = 8;
+}
+
+message Pokemon {
+    optional int64 disappear_time = 1;
+    optional string encounter_id = 2;
+    optional double latitude = 3;
+    optional double longitude = 4;
+    optional int32 pokemon_id = 5;
+    optional string spawnpoint_id = 6;
+}
+
+message Pokestop {
+    optional int32 active_pokemon_id = 1;
+    optional bool enabled = 2;
+    optional int64 last_modified = 3;
+    optional double latitude = 4;
+    optional double longitude = 5;
+    optional int64 lure_expiration = 6;
+    optional string pokestop_id = 7;
+}
+
+message ScannedLocation {
+    optional int64 last_modified = 1;
+    optional double latitude = 2;
+    optional double longitude = 3;
+    optional string scanned_id = 4;
+}
+

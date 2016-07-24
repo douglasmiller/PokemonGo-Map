@@ -11,7 +11,7 @@ from datetime import timedelta
 from base64 import b64encode
 
 from . import config
-from .utils import load_credentials, get_args
+from .utils import load_credentials, get_args, datetime_to_miliseconds
 from .transform import transform_from_wgs_to_gcj
 from .customLog import printPokemon
 
@@ -41,6 +41,15 @@ def init_database():
 
     return db
 
+def unset_none(obj):
+    cleaned = {k: v for k, v in obj.iteritems() if v is not None}
+    obj.clear()
+    obj.update(cleaned)
+
+def convert_datetime(obj, fields):
+    for f in fields:
+        if isinstance(obj[f], datetime):
+            obj[f] = datetime_to_miliseconds(obj[f])
 
 class BaseModel(Model):
     class Meta:
@@ -66,8 +75,8 @@ class Pokemon(BaseModel):
     disappear_time = DateTimeField()
 
     @classmethod
-    def get_active(cls, swLat, swLng, neLat, neLng):
-        if swLat == None or swLng == None or neLat == None or neLng == None:
+    def get_active(cls, bounds, convert):
+        if None in bounds.viewvalues():
             query = (Pokemon
                  .select()
                  .where(Pokemon.disappear_time > datetime.utcnow())
@@ -76,14 +85,17 @@ class Pokemon(BaseModel):
             query = (Pokemon
                  .select()
                  .where((Pokemon.disappear_time > datetime.utcnow()) &
-                    (Pokemon.latitude >= swLat) &
-                    (Pokemon.longitude >= swLng) &
-                    (Pokemon.latitude <= neLat) &
-                    (Pokemon.longitude <= neLng))
+                    (Pokemon.latitude >= bounds['swLat']) &
+                    (Pokemon.longitude >= bounds['swLng']) &
+                    (Pokemon.latitude <= bounds['neLat']) &
+                    (Pokemon.longitude <= bounds['neLng']))
                  .dicts())
 
         pokemons = []
         for p in query:
+            if convert:
+                convert_datetime(p, ['disappear_time'])
+                unset_none(p)
             if args.china:
                 p['latitude'], p['longitude'] = \
                     transform_from_wgs_to_gcj(p['latitude'], p['longitude'])
@@ -92,8 +104,8 @@ class Pokemon(BaseModel):
         return pokemons
 
     @classmethod
-    def get_active_by_id(cls, ids, swLat, swLng, neLat, neLng):
-        if swLat == None or swLng == None or neLat == None or neLng == None:
+    def get_active_by_id(cls, ids, bounds, convert):
+        if None in bounds.viewvalues():
             query = (Pokemon
                      .select()
                      .where((Pokemon.pokemon_id << ids) &
@@ -104,10 +116,10 @@ class Pokemon(BaseModel):
                      .select()
                      .where((Pokemon.pokemon_id << ids) &
                             (Pokemon.disappear_time > datetime.utcnow()) &
-                            (Pokemon.latitude >= swLat) &
-                            (Pokemon.longitude >= swLng) &
-                            (Pokemon.latitude <= neLat) &
-                            (Pokemon.longitude <= neLng))
+                            (Pokemon.latitude >= bounds['swLat']) &
+                            (Pokemon.longitude >= bounds['swLng']) &
+                            (Pokemon.latitude <= bounds['neLat']) &
+                            (Pokemon.longitude <= bounds['neLng']))
                      .dicts())
 
         pokemons = []
@@ -130,26 +142,28 @@ class Pokestop(BaseModel):
     active_pokemon_id = IntegerField(null=True)
 
     @classmethod
-    def get_stops(cls, swLat, swLng, neLat, neLng):
-        if swLat == None or swLng == None or neLat == None or neLng == None:
+    def get_stops(cls, bounds, convert):
+        if None in bounds.viewvalues():
             query = (Pokestop
                  .select()
                  .dicts())
         else:
             query = (Pokestop
                  .select()
-                 .where((Pokestop.latitude >= swLat) &
-                    (Pokestop.longitude >= swLng) &
-                    (Pokestop.latitude <= neLat) &
-                    (Pokestop.longitude <= neLng))
+                 .where((Pokestop.latitude >= bounds['swLat']) &
+                    (Pokestop.longitude >= bounds['swLng']) &
+                    (Pokestop.latitude <= bounds['neLat']) &
+                    (Pokestop.longitude <= bounds['neLng']))
                  .dicts())
 
         pokestops = []
         for p in query:
+            if convert:
+                convert_datetime(p, ['last_modified', 'lure_expiration'])
+                unset_none(p)
             pokestops.append(p)
 
         return pokestops
-
 
 class Gym(BaseModel):
     UNCONTESTED = 0
@@ -167,22 +181,25 @@ class Gym(BaseModel):
     last_modified = DateTimeField()
 
     @classmethod
-    def get_gyms(cls, swLat, swLng, neLat, neLng):
-        if swLat == None or swLng == None or neLat == None or neLng == None:
+    def get_gyms(cls, bounds, convert):
+        if None in bounds.viewvalues():
             query = (Gym
                  .select()
                  .dicts())
         else:
             query = (Gym
                  .select()
-                 .where((Gym.latitude >= swLat) &
-                    (Gym.longitude >= swLng) &
-                    (Gym.latitude <= neLat) &
-                    (Gym.longitude <= neLng))
+                 .where((Gym.latitude >= bounds['swLat']) &
+                    (Gym.longitude >= bounds['swLng']) &
+                    (Gym.latitude <= bounds['neLat']) &
+                    (Gym.longitude <= bounds['neLng']))
                  .dicts())
 
         gyms = []
         for g in query:
+            if convert:
+                convert_datetime(g, ['last_modified'])
+                unset_none(g)
             gyms.append(g)
 
         return gyms
@@ -194,18 +211,21 @@ class ScannedLocation(BaseModel):
     last_modified = DateTimeField()
 
     @classmethod
-    def get_recent(cls, swLat, swLng, neLat, neLng):
+    def get_recent(cls, bounds, convert):
         query = (ScannedLocation
                  .select()
                  .where((ScannedLocation.last_modified >= (datetime.utcnow() - timedelta(minutes=15))) &
-                    (ScannedLocation.latitude >= swLat) &
-                    (ScannedLocation.longitude >= swLng) &
-                    (ScannedLocation.latitude <= neLat) &
-                    (ScannedLocation.longitude <= neLng))
+                    (ScannedLocation.latitude >= bounds['swLat']) &
+                    (ScannedLocation.longitude >= bounds['swLng']) &
+                    (ScannedLocation.latitude <= bounds['neLat']) &
+                    (ScannedLocation.longitude <= bounds['neLng']))
                  .dicts())
 
         scans = []
         for s in query:
+            if convert:
+                convert_datetime(s, ['last_modified'])
+                unset_none(s)
             scans.append(s)
 
         return scans
